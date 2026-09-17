@@ -5,10 +5,14 @@ load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 MONGO_URI = os.getenv("MONGO_URI")
-CREATOR_NAME = "〘Cactuc = نــوید〙"
+ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
+CREATOR_NAME = "نوید | Cactuc"
 CREATOR_USERNAME = "cactuc580"
-CREATOR_ID_LINK = f"https://t.me/{CREATOR_USERNAME}"
+CREATOR_LINK = f"https://t.me/{CREATOR_USERNAME}"
 DEFAULT_LANG = "fa"
 SUPPORTED_LANGS = ["fa", "en", "ru", "ar"]
-ADMIN_ID = 8659480577
 
+if not BOT_TOKEN:
+    raise RuntimeError("BOT_TOKEN is not set")
+if not MONGO_URI:
+    raise RuntimeError("MONGO_URI is not set")
