@@ -3,8 +3,13 @@ import os
 from threading import Thread
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from telegram.ext import (
-    Application, CommandHandler, CallbackQueryHandler,
-    MessageHandler, ChatMemberHandler, MessageReactionHandler, filters
+    Application,
+    CommandHandler,
+    CallbackQueryHandler,
+    MessageHandler,
+    ChatMemberHandler,
+    MessageReactionHandler,
+    filters
 )
 from config import BOT_TOKEN
 from handlers.start import start_command, language_callback, menu_callback
@@ -25,26 +30,36 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 # ============================================================
 # RENDER HEALTH SERVER
-# Render Web Service باید روی PORT گوش بدهد.
 # ============================================================
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path in ("/", "/health"):
             response = b"OK"
             self.send_response(200)
-            self.send_header("Content-Type", "text/plain; charset=utf-8")
-            self.send_header("Content-Length", str(len(response)))
+            self.send_header(
+                "Content-Type",
+                "text/plain; charset=utf-8"
+            )
+            self.send_header(
+                "Content-Length",
+                str(len(response))
+            )
             self.end_headers()
             self.wfile.write(response)
         else:
             response = b"Not Found"
             self.send_response(404)
-            self.send_header("Content-Type", "text/plain; charset=utf-8")
-            self.send_header("Content-Length", str(len(response)))
+            self.send_header(
+                "Content-Type",
+                "text/plain; charset=utf-8"
+            )
+            self.send_header(
+                "Content-Length",
+                str(len(response))
+            )
             self.end_headers()
             self.wfile.write(response)
     def log_message(self, format, *args):
-        # جلوگیری از شلوغ شدن Logهای Render
         return
 def start_health_server():
     port = int(os.environ.get("PORT", "10000"))
@@ -52,14 +67,16 @@ def start_health_server():
         ("0.0.0.0", port),
         HealthHandler
     )
-    logger.info(f"Health server running on port {port}")
+    logger.info(
+        f"Health server running on port {port}"
+    )
     server.serve_forever()
 # ============================================================
 # MAIN BOT
 # ============================================================
 def main():
     # --------------------------------------------------------
-    # Render HTTP server
+    # Start Render HTTP health server
     # --------------------------------------------------------
     health_thread = Thread(
         target=start_health_server,
@@ -73,11 +90,26 @@ def main():
     # --------------------------------------------------------
     # Commands
     # --------------------------------------------------------
-    app.add_handler(CommandHandler("start", start_command))
-    app.add_handler(CommandHandler("stats", stats_command))
-    app.add_handler(CommandHandler("block", block_command))
+    app.add_handler(
+        CommandHandler(
+            "start",
+            start_command
+        )
+    )
+    app.add_handler(
+        CommandHandler(
+            "stats",
+            stats_command
+        )
+    )
+    app.add_handler(
+        CommandHandler(
+            "block",
+            block_command
+        )
+    )
     # --------------------------------------------------------
-    # Callback Queries
+    # Language / Menu callbacks
     # --------------------------------------------------------
     app.add_handler(
         CallbackQueryHandler(
@@ -91,6 +123,9 @@ def main():
             pattern="^menu_"
         )
     )
+    # --------------------------------------------------------
+    # Owner callbacks
+    # --------------------------------------------------------
     app.add_handler(
         CallbackQueryHandler(
             stars_toggle_callback,
@@ -103,6 +138,9 @@ def main():
             pattern="^preview_"
         )
     )
+    # --------------------------------------------------------
+    # Like / About / Creator callbacks
+    # --------------------------------------------------------
     app.add_handler(
         CallbackQueryHandler(
             like_callback,
@@ -122,7 +160,7 @@ def main():
         )
     )
     # --------------------------------------------------------
-    # Messages
+    # Text messages
     # --------------------------------------------------------
     app.add_handler(
         MessageHandler(
@@ -130,6 +168,9 @@ def main():
             text_router
         )
     )
+    # --------------------------------------------------------
+    # Photo messages
+    # --------------------------------------------------------
     app.add_handler(
         MessageHandler(
             filters.PHOTO,
@@ -137,7 +178,7 @@ def main():
         )
     )
     # --------------------------------------------------------
-    # Chat Member Updates
+    # Chat member updates
     # --------------------------------------------------------
     app.add_handler(
         ChatMemberHandler(
@@ -146,23 +187,27 @@ def main():
         )
     )
     # --------------------------------------------------------
-    # Message Reaction Updates
+    # Message reaction updates
+    # --------------------------------------------------------
+    # IMPORTANT:
+    # python-telegram-bot 21.6 uses
+    # MESSAGE_REACTION_COUNT_UPDATED
     # --------------------------------------------------------
     app.add_handler(
         MessageReactionHandler(
             message_reaction_count_update,
             message_reaction_types=(
-                MessageReactionHandler.MESSAGE_REACTION_COUNT_UPDATES
+                MessageReactionHandler.MESSAGE_REACTION_COUNT_UPDATED
             )
         )
     )
     # --------------------------------------------------------
-    # Scheduler
+    # Countdown scheduler
     # --------------------------------------------------------
     start_scheduler(app.bot)
     logger.info("ربات روشن شد")
     # --------------------------------------------------------
-    # Telegram Polling
+    # Telegram polling
     # --------------------------------------------------------
     app.run_polling(
         allowed_updates=[
