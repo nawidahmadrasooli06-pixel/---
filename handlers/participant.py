@@ -1,85 +1,31 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ContextTypes, ConversationHandler, MessageHandler, filters
+from telegram.ext import ContextTypes
 from lang import t
-from database import add_participant, challenges
+from database import add_participant, get_challenge, participant_exists, set_participant_post, participants, now_utc
 
-NAME, AGE, CITY, PHOTO = range(4)
+async def enter_participant_flow(update,context):
+    lang=context.user_data.get("lang","fa"); cid=context.user_data.get("pending_challenge_id"); ch=get_challenge(cid)
+    if not ch or not ch.get("active"): await update.callback_query.message.reply_text(t(lang,"not_found")); return
+    old=participant_exists(cid,update.effective_user.id)
+    if old: await update.callback_query.message.reply_text(t(lang,"already_registered")); return
+    context.user_data["state"]="await_name"; await update.callback_query.message.reply_text(t(lang,"ask_name"))
 
-async def enter_participant_flow(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    lang = context.user_data.get("lang", "fa")
-    query = update.callback_query
-    await query.message.reply_text(t(lang, "ask_name"))
-    return NAME
+async def receive_name(update,context):
+    context.user_data["p_name"]=update.message.text.strip()[:100]; context.user_data["state"]="await_residence"; await update.message.reply_text(t(context.user_data.get("lang","fa"),"ask_residence"))
+async def receive_residence(update,context):
+    context.user_data["p_residence"]=update.message.text.strip()[:100]; context.user_data["state"]="await_photo"; await update.message.reply_text(t(context.user_data.get("lang","fa"),"ask_photo"))
 
-async def receive_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    lang = context.user_data.get("lang", "fa")
-    context.user_data["p_name"] = update.message.text.strip()
-    await update.message.reply_text(t(lang, "ask_age"))
-    return AGE
-
-async def receive_age(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    lang = context.user_data.get("lang", "fa")
-    context.user_data["p_age"] = update.message.text.strip()
-    await update.message.reply_text(t(lang, "ask_city"))
-    return CITY
-
-async def receive_city(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    lang = context.user_data.get("lang", "fa")
-    context.user_data["p_city"] = update.message.text.strip()
-    await update.message.reply_text(t(lang, "ask_photo"))
-    return PHOTO
-
-async def receive_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    lang = context.user_data.get("lang", "fa")
-    if not update.message.photo:
-        await update.message.reply_text(t(lang, "ask_photo"))
-        return PHOTO
-    photo_file_id = update.message.photo[-1].file_id
-
-    challenge_id = context.user_data.get("pending_challenge_id")
-    challenge = challenges.find_one({"_id": __import__("bson").ObjectId(challenge_id)})
-    if not challenge:
-        await update.message.reply_text("چالش پیدا نشد یا تموم شده.")
-        return ConversationHandler.END
-
-    user = update.effective_user
-    number = add_participant(
-        challenge_id, user.id,
-        context.user_data["p_name"], context.user_data["p_age"],
-        context.user_data["p_city"], photo_file_id
-    )
-
-    caption = (
-        f"👤 شرکت‌کننده شماره {number}\n"
-        f"نام: {context.user_data['p_name']}\n"
-        f"سن: {context.user_data['p_age']}\n"
-        f"شهر: {context.user_data['p_city']}"
-    )
-    kb = InlineKeyboardMarkup([[
-        InlineKeyboardButton("❤️ لایک (0)", callback_data=f"like_{challenge_id}_{number}")
-    ]])
-    sent = await context.bot.send_photo(
-        chat_id=challenge["channel_id"], photo=photo_file_id,
-        caption=caption, reply_markup=kb
-    )
-
-    from database import participants
-    participants.update_one(
-        {"challenge_id": challenge_id, "number": number},
-        {"$set": {"post_message_id": sent.message_id}}
-    )
-
-    await update.message.reply_text(t(lang, "registered", number=number))
-    return ConversationHandler.END
-
-participant_conversation_handler = ConversationHandler(
-    entry_points=[],
-    states={
-        NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_name)],
-        AGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_age)],
-        CITY: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_city)],
-        PHOTO: [MessageHandler(filters.PHOTO, receive_photo)],
-    },
-    fallbacks=[],
-    per_message=False
-)
+async def receive_photo(update,context):
+    lang=context.user_data.get("lang","fa"); cid=context.user_data.get("pending_challenge_id"); ch=get_challenge(cid)
+    if not update.message.photo: await update.message.reply_text(t(lang,"ask_photo")); return
+    if not ch or not ch.get("active"): await update.message.reply_text(t(lang,"not_found")); return
+    user=update.effective_user; old=participant_exists(cid,user.id)
+    if old: await update.message.reply_text(t(lang,"already_registered")); return
+    num,created,_=add_participant(cid,user.id,context.user_data["p_name"],context.user_data["p_residence"],update.message.photo[-1].file_id,ch["channel_id"])
+    if not created: await update.message.reply_text(t(lang,"already_registered")); return
+    kb=InlineKeyboardMarkup([[InlineKeyboardButton("❤️ لایک (0)",callback_data=f"like_{cid}_{num}")],[InlineKeyboardButton("🚨 گزارش چالش",callback_data=f"report_{cid}")]])
+    caption=f"👤 اشتراک‌کننده: {num}\n\n👍 اسم: {context.user_data['p_name']}\n📍 محل: {context.user_data['p_residence']}\n\n🏆 برنده‌ها و جایزه‌ها:\n"+"\n".join(f"{i+1}. {p}" for i,p in enumerate(ch.get("prizes",[])))+f"\n\n🔗 ثبت‌نام: https://t.me/{(await context.bot.get_me()).username}?start=CH{cid}\n📢 کانال: {ch.get('channel_link','')}\n👤 مالک: {ch.get('owner_username','')}"
+    sent=await context.bot.send_photo(ch["channel_id"],update.message.photo[-1].file_id,caption=caption,reply_markup=kb)
+    set_participant_post(cid,num,sent.message_id)
+    await update.message.reply_text(t(lang,"registered",number=num,residence=context.user_data["p_residence"]))
+    for k in ("state","pending_challenge_id","p_name","p_residence"): context.user_data.pop(k,None)
