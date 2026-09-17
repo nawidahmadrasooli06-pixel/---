@@ -1,17 +1,13 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ContextTypes, ConversationHandler, CommandHandler, MessageHandler, filters
+from telegram.ext import ContextTypes
 from lang import t
 from database import create_challenge
-from config import BOT_TOKEN
-import re
-
-CHANNEL, WINNERS_COUNT, PRIZE, START_TIME, END_TIME, STARS_TOGGLE, STARS_RATE, PREVIEW = range(8)
 
 async def start_owner_flow(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = context.user_data.get("lang", "fa")
     context.user_data["new_challenge"] = {}
+    context.user_data["state"] = "await_channel"
     await update.callback_query.message.reply_text(t(lang, "ask_channel"))
-    return CHANNEL
 
 async def receive_channel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = context.user_data.get("lang", "fa")
@@ -21,16 +17,16 @@ async def receive_channel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         member = await context.bot.get_chat_member(chat.id, context.bot.id)
         if member.status not in ("administrator", "creator"):
             await update.message.reply_text(t(lang, "bot_not_admin"))
-            return CHANNEL
+            return
     except Exception:
         await update.message.reply_text(t(lang, "bot_not_admin"))
-        return CHANNEL
+        return
 
     context.user_data["new_challenge"]["channel_id"] = chat.id
     context.user_data["new_challenge"]["channel_username"] = chat.username
     context.user_data["new_challenge"]["channel_link"] = f"https://t.me/{chat.username}" if chat.username else ""
+    context.user_data["state"] = "await_winners_count"
     await update.message.reply_text(t(lang, "ask_winners_count"))
-    return WINNERS_COUNT
 
 async def receive_winners_count(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = context.user_data.get("lang", "fa")
@@ -38,12 +34,12 @@ async def receive_winners_count(update: Update, context: ContextTypes.DEFAULT_TY
         count = int(update.message.text.strip())
     except ValueError:
         await update.message.reply_text(t(lang, "ask_winners_count"))
-        return WINNERS_COUNT
+        return
     context.user_data["new_challenge"]["winners_count"] = count
     context.user_data["new_challenge"]["prizes"] = []
     context.user_data["prize_rank"] = 1
+    context.user_data["state"] = "await_prize"
     await update.message.reply_text(t(lang, "ask_prize", rank=1))
-    return PRIZE
 
 async def receive_prize(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = context.user_data.get("lang", "fa")
@@ -54,9 +50,9 @@ async def receive_prize(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if rank <= total:
         context.user_data["prize_rank"] = rank
         await update.message.reply_text(t(lang, "ask_prize", rank=rank))
-        return PRIZE
+        return
+    context.user_data["state"] = "await_start_time"
     await update.message.reply_text(t(lang, "ask_start_time"))
-    return START_TIME
 
 def parse_dt(text):
     from datetime import datetime
@@ -68,9 +64,9 @@ async def receive_start_time(update: Update, context: ContextTypes.DEFAULT_TYPE)
         context.user_data["new_challenge"]["start_time"] = parse_dt(update.message.text)
     except ValueError:
         await update.message.reply_text(t(lang, "ask_start_time"))
-        return START_TIME
+        return
+    context.user_data["state"] = "await_end_time"
     await update.message.reply_text(t(lang, "ask_end_time"))
-    return END_TIME
 
 async def receive_end_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = context.user_data.get("lang", "fa")
@@ -78,25 +74,26 @@ async def receive_end_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["new_challenge"]["end_time"] = parse_dt(update.message.text)
     except ValueError:
         await update.message.reply_text(t(lang, "ask_end_time"))
-        return END_TIME
+        return
+    context.user_data["state"] = None
     kb = InlineKeyboardMarkup([[
         InlineKeyboardButton(t(lang, "btn_yes"), callback_data="stars_yes"),
         InlineKeyboardButton(t(lang, "btn_no"), callback_data="stars_no")
     ]])
     await update.message.reply_text(t(lang, "ask_stars"), reply_markup=kb)
-    return STARS_TOGGLE
 
-async def receive_stars_toggle(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def stars_toggle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = context.user_data.get("lang", "fa")
     query = update.callback_query
     await query.answer()
     if query.data == "stars_yes":
         context.user_data["new_challenge"]["stars_enabled"] = True
+        context.user_data["state"] = "await_stars_rate"
         await query.message.reply_text(t(lang, "ask_stars_rate"))
-        return STARS_RATE
+        return
     context.user_data["new_challenge"]["stars_enabled"] = False
     context.user_data["new_challenge"]["stars_rate"] = 0
-    return await show_preview(update, context)
+    await show_preview(update, context)
 
 async def receive_stars_rate(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = context.user_data.get("lang", "fa")
@@ -104,9 +101,10 @@ async def receive_stars_rate(update: Update, context: ContextTypes.DEFAULT_TYPE)
         rate = int(update.message.text.strip())
     except ValueError:
         await update.message.reply_text(t(lang, "ask_stars_rate"))
-        return STARS_RATE
+        return
     context.user_data["new_challenge"]["stars_rate"] = rate
-    return await show_preview(update, context)
+    context.user_data["state"] = None
+    await show_preview(update, context)
 
 async def show_preview(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = context.user_data.get("lang", "fa")
@@ -125,15 +123,16 @@ async def show_preview(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]])
     msg = update.callback_query.message if update.callback_query else update.message
     await msg.reply_text(t(lang, "preview_ready") + "\n\n" + preview, reply_markup=kb)
-    return PREVIEW
 
-async def confirm_or_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def preview_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = context.user_data.get("lang", "fa")
     query = update.callback_query
     await query.answer()
     if query.data == "preview_cancel":
+        context.user_data["new_challenge"] = {}
+        context.user_data["state"] = None
         await query.message.reply_text("لغو شد. دوباره از منو شروع کن.")
-        return ConversationHandler.END
+        return
 
     data = context.user_data["new_challenge"]
     owner_id = update.effective_user.id
@@ -154,21 +153,6 @@ async def confirm_or_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception:
         pass
 
+    context.user_data["new_challenge"] = {}
+    context.user_data["state"] = None
     await query.message.reply_text(t(lang, "challenge_published", link=reg_link))
-    return ConversationHandler.END
-
-owner_conversation_handler = ConversationHandler(
-    entry_points=[],
-    states={
-        CHANNEL: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_channel)],
-        WINNERS_COUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_winners_count)],
-        PRIZE: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_prize)],
-        START_TIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_start_time)],
-        END_TIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_end_time)],
-        STARS_TOGGLE: [__import__("telegram.ext", fromlist=["CallbackQueryHandler"]).CallbackQueryHandler(receive_stars_toggle, pattern="^stars_")],
-        STARS_RATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_stars_rate)],
-        PREVIEW: [__import__("telegram.ext", fromlist=["CallbackQueryHandler"]).CallbackQueryHandler(confirm_or_cancel, pattern="^preview_")],
-    },
-    fallbacks=[],
-    per_message=False
-)
