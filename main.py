@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 from threading import Thread
@@ -141,51 +142,14 @@ def start_health_server():
 
 
 # ============================================================
-# SCHEDULER STARTUP
+# CREATE APPLICATION
 # ============================================================
 
-async def post_init(application):
-
-    logger.info(
-        "Starting challenge scheduler..."
-    )
-
-    application.bot_data["challenge_scheduler"] = (
-        await start_scheduler(
-            application.bot
-        )
-    )
-
-    logger.info(
-        "Challenge scheduler started successfully."
-    )
-
-
-# ============================================================
-# MAIN
-# ============================================================
-
-def main():
-
-    # --------------------------------------------------------
-    # Render health server
-    # --------------------------------------------------------
-
-    health_thread = Thread(
-        target=start_health_server,
-        daemon=True,
-    )
-
-    health_thread.start()
-
-    # --------------------------------------------------------
-    # Telegram Application
-    # --------------------------------------------------------
+def create_application():
 
     app = (
         Application.builder()
         .token(BOT_TOKEN)
-        .post_init(post_init)
         .build()
     )
 
@@ -292,7 +256,7 @@ def main():
     )
 
     # ========================================================
-    # TEXT MESSAGES
+    # TEXT
     # ========================================================
 
     app.add_handler(
@@ -303,7 +267,7 @@ def main():
     )
 
     # ========================================================
-    # PHOTO MESSAGES
+    # PHOTO
     # ========================================================
 
     app.add_handler(
@@ -314,7 +278,7 @@ def main():
     )
 
     # ========================================================
-    # CHAT MEMBER UPDATES
+    # CHAT MEMBER
     # ========================================================
 
     app.add_handler(
@@ -325,7 +289,7 @@ def main():
     )
 
     # ========================================================
-    # TELEGRAM MESSAGE REACTION COUNT
+    # MESSAGE REACTION COUNT
     # ========================================================
 
     app.add_handler(
@@ -337,15 +301,67 @@ def main():
         )
     )
 
-    # ========================================================
-    # START BOT
-    # ========================================================
+    return app
 
-    logger.info(
-        "ربات روشن شد"
+
+# ============================================================
+# ASYNC MAIN
+# ============================================================
+
+async def main():
+
+    # --------------------------------------------------------
+    # Render health server
+    # --------------------------------------------------------
+
+    health_thread = Thread(
+        target=start_health_server,
+        daemon=True,
     )
 
-    app.run_polling(
+    health_thread.start()
+
+    # --------------------------------------------------------
+    # Create Telegram application
+    # --------------------------------------------------------
+
+    app = create_application()
+
+    # --------------------------------------------------------
+    # Initialize Telegram
+    # --------------------------------------------------------
+
+    await app.initialize()
+
+    # --------------------------------------------------------
+    # Start scheduler AFTER event loop exists
+    # --------------------------------------------------------
+
+    logger.info(
+        "Starting challenge scheduler..."
+    )
+
+    app.bot_data["challenge_scheduler"] = (
+        await start_scheduler(
+            app.bot
+        )
+    )
+
+    logger.info(
+        "Challenge scheduler started successfully."
+    )
+
+    # --------------------------------------------------------
+    # Start Telegram application
+    # --------------------------------------------------------
+
+    await app.start()
+
+    # --------------------------------------------------------
+    # Start polling
+    # --------------------------------------------------------
+
+    await app.updater.start_polling(
         allowed_updates=[
             "message",
             "callback_query",
@@ -354,10 +370,50 @@ def main():
         ]
     )
 
+    logger.info(
+        "ربات روشن شد"
+    )
+
+    # --------------------------------------------------------
+    # Keep application alive
+    # --------------------------------------------------------
+
+    try:
+
+        while True:
+            await asyncio.sleep(3600)
+
+    except asyncio.CancelledError:
+
+        logger.info(
+            "Bot shutdown requested."
+        )
+
+    finally:
+
+        # ----------------------------------------------------
+        # Stop polling
+        # ----------------------------------------------------
+
+        if app.updater.running:
+            await app.updater.stop()
+
+        # ----------------------------------------------------
+        # Stop Telegram application
+        # ----------------------------------------------------
+
+        await app.stop()
+
+        # ----------------------------------------------------
+        # Shutdown Telegram
+        # ----------------------------------------------------
+
+        await app.shutdown()
+
 
 # ============================================================
 # ENTRY POINT
 # ============================================================
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
