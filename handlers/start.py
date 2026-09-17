@@ -22,7 +22,6 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     register_user_start(user.id, user.username or "")
 
-    # اگه از لینک مخصوص یه چالش اومده باشه
     if context.args:
         payload = context.args[0]
         if payload.startswith("CH"):
@@ -53,7 +52,6 @@ async def language_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    lang = context.user_data.get("lang", "fa")
     if query.data == "menu_new_challenge":
         from handlers.owner import start_owner_flow
         await start_owner_flow(update, context)
