@@ -1,14 +1,18 @@
-from bson import ObjectId
 from database import participants, challenges
-async def message_reaction_count_update(update,context):
-    m=update.message_reaction_count
-    if not m: return
-    paid=0
-    for r in m.reactions:
-        if getattr(r.type,"type",None)=="paid": paid=r.total_count; break
-    p=participants.find_one({"post_message_id":m.message_id,"channel_id":m.chat.id})
-    if not p or not paid: return
-    try: ch=challenges.find_one({"_id":ObjectId(p["challenge_id"])})
-    except Exception: return
-    if not ch or not ch.get("stars_enabled"): return
-    participants.update_one({"_id":p["_id"]},{"$set":{"stars_received":paid}})
+
+def _paid_count(mrc):
+    total=0
+    for reaction in (mrc.reactions or []):
+        rtype=getattr(reaction.type,"type",None)
+        if rtype=="paid": total += int(reaction.total_count or 0)
+    return total
+
+async def message_reaction_count_update(update, context):
+    mrc=update.message_reaction_count
+    if not mrc: return
+    p=participants.find_one({"post_message_id":mrc.message_id,"channel_id":mrc.chat.id})
+    if not p: return
+    ch=challenges.find_one({"_id":__import__('bson').ObjectId(p['challenge_id'])})
+    if not ch or not ch.get('stars_enabled'): return
+    paid=_paid_count(mrc)
+    participants.update_one({'_id':p['_id']},{'$set':{'stars_received':paid}})
