@@ -1,29 +1,29 @@
-# Challenge Bot — Final
+# Challenge Bot — stable Render build
 
-Render Start Command:
+Start command:
 `python main.py`
 
-Required environment variables:
+Required Render environment variables:
 - `BOT_TOKEN`
 - `MONGO_URI`
 - `ADMIN_ID`
 
-`handlers/__init__.py` is intentionally empty.
+The MongoDB URI and bot token are intentionally read only from environment variables.
+Do not put secrets in GitHub.
 
-## Final features
-- Separate deep-link registration for every challenge
-- Participant name, age, city/province and profile photo
-- Unique participant number per challenge
-- Clean challenge and participant banners
-- Active-challenge discovery
-- Participant statistics per active challenge
-- Owner statistics per active challenge
-- Channel membership tracking
-- Like tracking with one-like-per-user protection
-- Star reaction count updates through Telegram `message_reaction_count`
-- Afghanistan / Iran / Germany time zones
-- Human-friendly date and time entry
-- Automatic challenge reminder and final results
+Features:
+- Compact editable inline main menu
+- Persistent Telegram Start command/menu button
+- Persian / English UI
+- Challenge-specific deep-link registration
+- Name, age, city/province and profile photo
+- Channel-link validation and bot-admin check
+- Afghanistan / Iran / Germany timezone handling
+- Gregorian / Jalali dates and human-friendly times
+- Like tracking with membership and one-like-per-user protection
+- Paid Telegram Stars reaction count tracking
+- Participant and owner statistics
 - Report system routed to Super Admin
-- Persian and English UI
-- Render health server and polling setup
+- Automatic one-hour reminder and final results
+- Render health endpoint
+- MongoDB indexes and atomic participant numbering
