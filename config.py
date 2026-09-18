@@ -13,7 +13,6 @@ if not MONGO_URI:
     raise RuntimeError("MONGO_URI is not set")
 if not ADMIN_ID_RAW:
     raise RuntimeError("ADMIN_ID is not set")
-
 try:
     ADMIN_ID = int(ADMIN_ID_RAW)
 except ValueError as exc:
